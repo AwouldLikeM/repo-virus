@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Konfiguracja i Klucze (Bardzo ważne!)
+.env
+config/serviceAccountKey.json
+serviceAccountKey.json
+
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+android/.gradle
+android/local.properties
+virus_repo/android/app/google-services.json
+
+# Generowane pliki (chcemy je mieć lokalnie, ale nie zaśmiecać repo)
+generated_samples/
+uploaded_archive/
+
+# IDE
+.idea/
+.vscode/
+*.iml
