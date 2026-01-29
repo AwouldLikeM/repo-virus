@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -12,35 +13,71 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
-  final String _adminEmail = "admin@virus.com";
-  final String _adminPass = "Haslo123!";
-
+  // --- LOGOWANIE ANONIMOWE (Dla Gościa) ---
   Future<void> _loginAnon() async {
     setState(() => _isLoading = true);
     try {
       await FirebaseAuth.instance.signInAnonymously();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _loginAdmin() async {
+  // --- LOGOWANIE GOOGLE (Dla Admina/Analityka) ---
+  Future<void> _loginGoogle() async {
     setState(() => _isLoading = true);
+
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _adminEmail,
-        password: _adminPass,
+      // 1. Get the singleton instance (New in v7)
+      final GoogleSignIn googleSignIn = GoogleSignIn.instance;
+
+      // 2. Initialize the plugin (Required in v7)
+      await googleSignIn.initialize();
+
+      // 3. Authenticate (New in v7: Replaces signIn())
+      // This method throws an exception if cancelled, it does NOT return null.
+      final GoogleSignInAccount googleUser = await googleSignIn.authenticate(
+        scopeHint: ['email'], // Hint to request email scope
       );
+
+      // 4. Get Auth Details
+      // Note: 'authentication' is now synchronous (no await needed)
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+
+      // 5. Get Access Token (New in v7)
+      // 'accessToken' was removed from googleAuth. We must use authorizationClient.
+      final authClient = googleSignIn.authorizationClient;
+      final authorization = await authClient.authorizationForScopes(['email']);
+
+      // 6. Create Credential
+      final credential = GoogleAuthProvider.credential(
+        accessToken: authorization?.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // 7. Sign in to Firebase
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      // Success! AuthWrapper handles navigation.
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Admin Auth Error: $e")));
+      // Handle cancellation or errors
+      if (mounted) {
+        // v7 throws GoogleSignInException on cancellation?
+        // You can check 'e' type if you want to hide the snackbar for cancellations.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Google Sign-In Failed: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -65,11 +102,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 50),
+
               if (_isLoading)
                 const CircularProgressIndicator()
               else
                 Column(
                   children: [
+                    // PRZYCISK GOOGLE
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.g_mobiledata, size: 30),
+                        label: const Text("LOGIN WITH GOOGLE (Analyst)"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black,
+                        ),
+                        onPressed: _loginGoogle,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // PRZYCISK GOŚCIA
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -81,20 +136,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           foregroundColor: Colors.white,
                         ),
                         onPressed: _loginAnon,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.admin_panel_settings),
-                        label: const Text("ANALYST PANEL (Full Access)"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: _loginAdmin,
                       ),
                     ),
                   ],

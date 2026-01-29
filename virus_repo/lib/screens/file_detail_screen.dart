@@ -22,6 +22,136 @@ class FileDetailScreen extends StatelessWidget {
     }
   }
 
+  // --- ZAAWANSOWANA EDYCJA I USUWANIE TAGA ---
+  void _editOrDeleteTag(BuildContext context, String currentTag) {
+    final TextEditingController tagController = TextEditingController(
+      text: currentTag,
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Edit Tag"),
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.redAccent),
+                tooltip: "Delete tag",
+                onPressed: () {
+                  // DELETE via arrayRemove (To jest operacja atomowa, więc bezpieczna bez transakcji)
+                  showDialog(
+                    context: context,
+                    builder: (confirmCtx) {
+                      return AlertDialog(
+                        title: const Text("Confirm Delete"),
+                        content: Text("Remove '$currentTag'?"),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(confirmCtx),
+                            child: const Text("Cancel"),
+                          ),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                            onPressed: () async {
+                              await FirebaseFirestore.instance
+                                  .collection('infected_files')
+                                  .doc(docId)
+                                  .update({
+                                    'dynamic_metadata.tags':
+                                        FieldValue.arrayRemove([currentTag]),
+                                  });
+                              if (context.mounted) Navigator.pop(confirmCtx);
+                              if (context.mounted) Navigator.pop(ctx);
+                            },
+                            child: const Text("Delete"),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
+          content: TextField(
+            controller: tagController,
+            decoration: const InputDecoration(
+              labelText: "Tag Name",
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancel"),
+            ),
+
+            // --- PROFESJONALNA EDYCJA (TRANSAKCJA) ---
+            ElevatedButton(
+              onPressed: () async {
+                String newText = tagController.text.trim();
+                if (newText.isNotEmpty && newText != currentTag) {
+                  final docRef = FirebaseFirestore.instance
+                      .collection('infected_files')
+                      .doc(docId);
+
+                  try {
+                    // Uruchamiamy transakcję
+                    await FirebaseFirestore.instance.runTransaction((
+                      transaction,
+                    ) async {
+                      // 1. ODCZYT (Wewnątrz transakcji!)
+                      DocumentSnapshot snapshot = await transaction.get(docRef);
+
+                      if (!snapshot.exists) {
+                        throw Exception("Document does not exist!");
+                      }
+
+                      // Wyciągamy aktualną listę tagów
+                      List<dynamic> currentTags =
+                          snapshot.get('dynamic_metadata.tags') ?? [];
+                      List<String> tagsList = List<String>.from(currentTags);
+
+                      // 2. LOGIKA BIZNESOWA (Podmiana w pamięci)
+                      int index = tagsList.indexOf(currentTag);
+                      if (index != -1) {
+                        tagsList[index] = newText; // Podmień w miejscu
+
+                        // 3. ZAPIS (Wewnątrz transakcji!)
+                        // Transakcja upewni się, że nikt w międzyczasie nie zmienił tej listy
+                        transaction.update(docRef, {
+                          'dynamic_metadata.tags': tagsList,
+                        });
+                      }
+                    });
+
+                    if (context.mounted) Navigator.pop(ctx);
+                  } catch (e) {
+                    // Obsługa błędu (np. dokument usunięty w trakcie edycji)
+                    print("Transaction failed: $e");
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Error updating tag: $e")),
+                      );
+                    }
+                  }
+                } else {
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text("Save"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _updateStatus(BuildContext context, String newStatus) {
     FirebaseFirestore.instance.collection('infected_files').doc(docId).update({
       'status': newStatus,
@@ -268,7 +398,7 @@ class FileDetailScreen extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.white10),
                   ),
@@ -335,12 +465,13 @@ class FileDetailScreen extends StatelessWidget {
                   children: [
                     ...tags.map(
                       (tag) => GestureDetector(
+                        // Zmiana: Wywołujemy _editOrDeleteTag zamiast starego _deleteTag
                         onLongPress: isAnon
                             ? null
-                            : () => _deleteTag(context, tag),
+                            : () => _editOrDeleteTag(context, tag),
                         child: Chip(
                           label: Text(tag),
-                          backgroundColor: Colors.red.withOpacity(0.2),
+                          backgroundColor: Colors.red.withValues(alpha: 0.2),
                           avatar: const Icon(Icons.tag, size: 14),
                         ),
                       ),
@@ -350,7 +481,9 @@ class FileDetailScreen extends StatelessWidget {
                         label: const Text("Add"),
                         avatar: const Icon(Icons.add, size: 16),
                         onPressed: () => _addCustomTag(context),
-                        backgroundColor: Colors.blueAccent.withOpacity(0.3),
+                        backgroundColor: Colors.blueAccent.withValues(
+                          alpha: 0.3,
+                        ),
                       ),
                   ],
                 ),
