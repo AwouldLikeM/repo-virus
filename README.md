@@ -85,3 +85,9 @@ Te pliki są ignorowane przez `.gitignore` i każdy musi je mieć u siebie lokal
 3. `android/app/google-services.json` - klucz do apki (Flutter).
 
 Jeżeli tu dotarłeś to daj łapkę w górę, napisz komentarz oraz zasubskrybuj gemini Pro.
+
+Autorzy:
+- Adam Mikołajewski
+- Jakub Rutkowski
+- Aleksander Pawlak
+- Kinga Pabińczyk
