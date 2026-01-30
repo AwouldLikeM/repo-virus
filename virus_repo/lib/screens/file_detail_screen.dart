@@ -337,9 +337,12 @@ class FileDetailScreen extends StatelessWidget {
         } else if (riskScore > 50) {
           riskColor = Colors.orangeAccent;
         }
-
+        final rawName =
+            currentData['original_filename'] ??
+            currentData['filename'] ??
+            "Details";
         return Scaffold(
-          appBar: AppBar(title: Text(currentData['filename'] ?? "Details")),
+          appBar: AppBar(title: Text(rawName)),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(

@@ -2,7 +2,8 @@
 .venv/
 __pycache__/
 *.pyc
-
+*.log
+*.png
 # Konfiguracja i Klucze (Bardzo ważne!)
 .env
 config/serviceAccountKey.json
