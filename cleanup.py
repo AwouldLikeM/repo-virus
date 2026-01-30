@@ -1,8 +1,7 @@
 import argparse
 import os
 import shutil
-import firebase_admin
-from firebase_admin import credentials, firestore, storage
+from firebase_admin import firestore, storage
 from _logger import setup_logger
 from _utils import AppConfig, get_firebase_app, load_config
 

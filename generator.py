@@ -53,7 +53,8 @@ def get_value_for_key(key: str, filename: str) -> str:
     # 1. Filename consistency (Critical for realism, rarely empty)
     if "internalname" in key_lower or "originalfilename" in key_lower:
         # Small chance to be empty, but usually matches filename
-        if random.random() < 0.05: return "" 
+        if random.random() < 0.05: 
+            return "" 
         return filename
     
     # 2. Random Chance to be Empty (The 1% - 30% rule)
@@ -192,7 +193,8 @@ def generate_virus_sample(template_path: str, output_path: str, max_size: int, f
 
 def validate_max_size(value):
     ivalue = int(value)
-    if ivalue < 13: raise argparse.ArgumentTypeError(f"Max size {ivalue}KB is too small.")
+    if ivalue < 13: 
+        raise argparse.ArgumentTypeError(f"Max size {ivalue}KB is too small.")
     return ivalue
 
 def main():
