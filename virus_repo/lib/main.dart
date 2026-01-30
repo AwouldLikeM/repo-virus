@@ -19,7 +19,7 @@ class VirusRepoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Infected Repo',
+      title: 'Infected Repo', // title should not be hardcoded
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
