@@ -13,7 +13,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
-  // --- LOGOWANIE ANONIMOWE (Dla Gościa) ---
+  // Anonim
   Future<void> _loginAnon() async {
     setState(() => _isLoading = true);
     try {
@@ -29,47 +29,33 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- LOGOWANIE GOOGLE (Dla Admina/Analityka) ---
+  // Google acc
   Future<void> _loginGoogle() async {
-    setState(() => _isLoading = true);
+    setState(() => _isLoading = true); // forces recall build to show loading
 
     try {
-      // 1. Get the singleton instance (New in v7)
       final GoogleSignIn googleSignIn = GoogleSignIn.instance;
 
-      // 2. Initialize the plugin (Required in v7)
       await googleSignIn.initialize();
 
-      // 3. Authenticate (New in v7: Replaces signIn())
-      // This method throws an exception if cancelled, it does NOT return null.
+      //throws an exception if cancelled, it does NOT return null.
       final GoogleSignInAccount googleUser = await googleSignIn.authenticate(
         scopeHint: ['email'], // Hint to request email scope
       );
 
-      // 4. Get Auth Details
-      // Note: 'authentication' is now synchronous (no await needed)
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
-      // 5. Get Access Token (New in v7)
-      // 'accessToken' was removed from googleAuth. We must use authorizationClient.
       final authClient = googleSignIn.authorizationClient;
       final authorization = await authClient.authorizationForScopes(['email']);
 
-      // 6. Create Credential
       final credential = GoogleAuthProvider.credential(
         accessToken: authorization?.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // 7. Sign in to Firebase
       await FirebaseAuth.instance.signInWithCredential(credential);
-
-      // Success! AuthWrapper handles navigation.
     } catch (e) {
-      // Handle cancellation or errors
       if (mounted) {
-        // v7 throws GoogleSignInException on cancellation?
-        // You can check 'e' type if you want to hide the snackbar for cancellations.
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Google Sign-In Failed: $e"),
@@ -98,8 +84,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: GoogleFonts.vt323(fontSize: 40, color: Colors.red),
               ),
               const Text(
-                "Secure Storage for Binary Threats",
+                "Storage for Binary Threats",
                 style: TextStyle(color: Colors.grey),
+              ),
+              const Text(
+                "AM JR AP KP",
+                style: TextStyle(color: Color.fromARGB(255, 182, 136, 136)),
+                softWrap: true,
               ),
               const SizedBox(height: 50),
 
@@ -108,13 +99,13 @@ class _LoginScreenState extends State<LoginScreen> {
               else
                 Column(
                   children: [
-                    // PRZYCISK GOOGLE
+                    // Google btn
                     SizedBox(
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.g_mobiledata, size: 30),
-                        label: const Text("LOGIN WITH GOOGLE (Analyst)"),
+                        label: const Text("Login with GOOGLE (Admin)"),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
                           foregroundColor: Colors.black,
@@ -124,13 +115,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // PRZYCISK GOŚCIA
+                    // Anonim btn
                     SizedBox(
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.person_outline),
-                        label: const Text("GUEST ACCESS (Read-Only)"),
+                        label: const Text("Anonymous Login"),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.grey[800],
                           foregroundColor: Colors.white,

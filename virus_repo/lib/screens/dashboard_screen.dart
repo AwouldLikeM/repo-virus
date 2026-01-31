@@ -15,11 +15,41 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  // --- KONFIGURACJA STRUMIENIA ---
+  int _currentLimit = 20; // Startujemy od 20 elementów
+  final int _limitIncrement = 20; // O ile zwiększać przy scrollowaniu
+  final ScrollController _scrollController = ScrollController();
+
   SortOption _currentSort = SortOption.dateDesc;
   GroupOption _currentGroup = GroupOption.none;
 
-  // --- HELPERS ---
+  @override
+  void initState() {
+    super.initState();
+    // Nasłuchujemy scrolla, żeby zwiększyć limit ("Infinite Scroll")
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >=
+          _scrollController.position.maxScrollExtent - 200) {
+        _loadMore();
+      }
+    });
+  }
 
+  void _loadMore() {
+    // Po prostu zwiększamy limit.
+    // SetState przebuduje UI -> StreamBuilder dostanie nowy limit -> Firebase dociągnie dane.
+    setState(() {
+      _currentLimit += _limitIncrement;
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // --- HELPERS UI ---
   String _truncateFilename(String name) {
     if (name.length <= 18) return name;
     return "${name.substring(0, 10)}...${name.substring(name.length - 6)}";
@@ -39,43 +69,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Colors.green;
   }
 
-  // --- SORTOWANIE I GRUPOWANIE ---
+  // --- LOGIKA SORTOWANIA I GRUPOWANIA (Client Side) ---
+  // Przy StreamBuilderze sortowanie robimy w zapytaniu (Server Side),
+  // ale grupowanie robimy na pobranych danych (Client Side).
 
-  List<QueryDocumentSnapshot> _sortDocs(List<QueryDocumentSnapshot> docs) {
-    docs.sort((a, b) {
-      final dataA = a.data() as Map<String, dynamic>;
-      final dataB = b.data() as Map<String, dynamic>;
+  Stream<QuerySnapshot> _getStream() {
+    Query query = FirebaseFirestore.instance.collection('infected_files');
 
-      switch (_currentSort) {
-        case SortOption.dateDesc:
-          Timestamp tA = dataA['uploaded_at'] ?? Timestamp.now();
-          Timestamp tB = dataB['uploaded_at'] ?? Timestamp.now();
-          return tB.compareTo(tA);
-        case SortOption.dateAsc:
-          Timestamp tA = dataA['uploaded_at'] ?? Timestamp.now();
-          Timestamp tB = dataB['uploaded_at'] ?? Timestamp.now();
-          return tA.compareTo(tB);
-        case SortOption.riskDesc:
-          int rA = dataA['dynamic_metadata']['risk_score'] ?? 0;
-          int rB = dataB['dynamic_metadata']['risk_score'] ?? 0;
-          return rB.compareTo(rA);
-        case SortOption.riskAsc:
-          int rA = dataA['dynamic_metadata']['risk_score'] ?? 0;
-          int rB = dataB['dynamic_metadata']['risk_score'] ?? 0;
-          return rA.compareTo(rB);
-        case SortOption.nameAsc:
-          String nA = dataA['original_filename'] ?? dataA['filename'] ?? "";
-          String nB = dataB['original_filename'] ?? dataB['filename'] ?? "";
-          return nA.compareTo(nB);
-      }
-    });
-    return docs;
+    // 1. Server-Side Sorting (Wymagane dla limitu)
+    switch (_currentSort) {
+      case SortOption.dateDesc:
+        query = query.orderBy('uploaded_at', descending: true);
+        break;
+      case SortOption.dateAsc:
+        query = query.orderBy('uploaded_at', descending: false);
+        break;
+      case SortOption.riskDesc:
+        query = query.orderBy('dynamic_metadata.risk_score', descending: true);
+        break;
+      case SortOption.riskAsc:
+        query = query.orderBy('dynamic_metadata.risk_score', descending: false);
+        break;
+      case SortOption.nameAsc:
+        query = query.orderBy('original_filename', descending: false);
+        break;
+    }
+
+    // 2. Limit (To jest nasz mechanizm "paginacji")
+    return query.limit(_currentLimit).snapshots();
   }
 
-  Map<String, List<QueryDocumentSnapshot>> _groupDocs(
-    List<QueryDocumentSnapshot> docs,
-  ) {
-    Map<String, List<QueryDocumentSnapshot>> groups = {};
+  Map<String, List<DocumentSnapshot>> _groupDocs(List<DocumentSnapshot> docs) {
+    Map<String, List<DocumentSnapshot>> groups = {};
 
     for (var doc in docs) {
       final data = doc.data() as Map<String, dynamic>;
@@ -94,19 +119,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           groupKey = "SAFE (Risk < 50)";
       }
 
-      if (!groups.containsKey(groupKey)) {
-        groups[groupKey] = [];
-      }
+      if (!groups.containsKey(groupKey)) groups[groupKey] = [];
       groups[groupKey]!.add(doc);
     }
     return groups;
   }
 
-  // --- UI BUILDERS ---
-
+  // --- WIDGET BUDOWANIA KARTY ---
   Widget _buildFileCard(
     BuildContext context,
-    QueryDocumentSnapshot doc,
+    DocumentSnapshot doc,
     bool isAnon,
   ) {
     final data = doc.data() as Map<String, dynamic>;
@@ -160,8 +182,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              "Risk: $riskScore",
-              style: TextStyle(color: statusColor, fontSize: 10),
+              "$riskScore",
+              style: TextStyle(color: statusColor, fontSize: 15),
             ),
             const SizedBox(width: 5),
             const Icon(Icons.arrow_forward_ios, size: 16),
@@ -192,13 +214,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text("Threat Repository"),
         actions: [
-          // IKONA GRUPOWANIA (Nowość)
           PopupMenuButton<GroupOption>(
-            icon: const Icon(Icons.category), // Ikonka kategorii/grupowania
+            icon: const Icon(Icons.category),
             tooltip: "Group by...",
-            onSelected: (GroupOption result) {
-              setState(() => _currentGroup = result);
-            },
+            onSelected: (GroupOption result) =>
+                setState(() => _currentGroup = result),
             itemBuilder: (context) => [
               const PopupMenuItem(
                 value: GroupOption.none,
@@ -206,37 +226,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const PopupMenuItem(
                 value: GroupOption.fileType,
-                child: Text("Group by Type (EXE, DLL...)"),
+                child: Text("Group by Type"),
               ),
               const PopupMenuItem(
                 value: GroupOption.riskLevel,
-                child: Text("Group by Risk Level"),
+                child: Text("Group by Risk"),
               ),
             ],
           ),
-          // IKONA SORTOWANIA
           PopupMenuButton<SortOption>(
             icon: const Icon(Icons.sort),
             tooltip: "Sort by...",
-            onSelected: (SortOption result) {
-              setState(() => _currentSort = result);
-            },
+            onSelected: (SortOption result) =>
+                setState(() => _currentSort = result),
             itemBuilder: (context) => [
               const PopupMenuItem(
                 value: SortOption.dateDesc,
-                child: Text("Date: Newest First"),
+                child: Text("Date: Newest"),
               ),
               const PopupMenuItem(
                 value: SortOption.dateAsc,
-                child: Text("Date: Oldest First"),
+                child: Text("Date: Oldest"),
               ),
               const PopupMenuItem(
                 value: SortOption.riskDesc,
-                child: Text("Risk: Highest First"),
+                child: Text("Risk: Highest"),
               ),
               const PopupMenuItem(
                 value: SortOption.riskAsc,
-                child: Text("Risk: Lowest First"),
+                child: Text("Risk: Lowest"),
               ),
               const PopupMenuItem(
                 value: SortOption.nameAsc,
@@ -262,79 +280,107 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
+      // TU JEST POWRÓT KRÓLA (StreamBuilder)
+      // ... (początek StreamBuilder bez zmian)
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('infected_files')
-            .snapshots(),
+        stream: _getStream(),
         builder: (context, snapshot) {
           if (snapshot.hasError)
             return const Center(child: Text("Database Error"));
-          if (snapshot.connectionState == ConnectionState.waiting)
-            return const Center(child: CircularProgressIndicator());
 
-          var docs = snapshot.data!.docs;
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final docs = snapshot.data?.docs ?? [];
           if (docs.isEmpty)
             return const Center(child: Text("Repository is clean."));
 
-          // 1. Sortowanie (zawsze aktywne)
-          docs = _sortDocs(docs);
+          // Jeśli otrzymaliśmy mniej dokumentów niż wynosi nasz limit,
+          // to znaczy, że dotarliśmy do końca kolekcji.
+          final bool hasMore = docs.length >= _currentLimit;
 
-          // 2. Wybór widoku: Grupowany vs Płaski
+          // WIDOK 1: PŁASKA LISTA (BEZ GRUPOWANIA)
           if (_currentGroup == GroupOption.none) {
-            // Widok płaski (stary)
             return ListView.builder(
-              itemCount: docs.length,
-              itemBuilder: (context, index) =>
-                  _buildFileCard(context, docs[index], isAnon),
+              controller: _scrollController,
+              // Dodajemy loader (+1) TYLKO jeśli hasMore jest true
+              itemCount: docs.length + (hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                // Jeśli jesteśmy na ostatnim indeksie I mamy więcej danych -> pokaż Loader
+                if (hasMore && index == docs.length) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
+                // W przeciwnym razie pokaż kartę pliku
+                return _buildFileCard(context, docs[index], isAnon);
+              },
             );
-          } else {
-            // Widok grupowany (nowy)
+          }
+          // WIDOK 2: GRUPOWANIE
+          else {
             final groups = _groupDocs(docs);
-
-            // Sortujemy klucze grup (np. żeby CRITICAL było przed SAFE)
             var sortedKeys = groups.keys.toList();
-            if (_currentGroup == GroupOption.riskLevel) {
-              // Specyficzne sortowanie dla ryzyka
-              sortedKeys.sort((a, b) {
-                if (a.contains("CRITICAL")) return -1; // Critical first
+
+            sortedKeys.sort((a, b) {
+              if (_currentGroup == GroupOption.riskLevel) {
+                if (a.contains("CRITICAL")) return -1;
                 if (b.contains("CRITICAL")) return 1;
-                if (a.contains("SUSPICIOUS")) return -1;
-                return 1;
-              });
-            } else {
-              sortedKeys.sort(); // Alfabetycznie dla typów plików
-            }
+              }
+              return a.compareTo(b);
+            });
 
             return ListView(
-              children: sortedKeys.map((key) {
-                final groupDocs = groups[key]!;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Nagłówek Grupy
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      width: double.infinity,
-                      color: Theme.of(context).cardColor.withOpacity(0.5),
-                      child: Text(
-                        "$key (${groupDocs.length})",
-                        style: const TextStyle(
-                          color: Colors.tealAccent,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
+              controller: _scrollController,
+              children: [
+                ...sortedKeys.map((key) {
+                  final groupDocs = groups[key]!;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        width: double.infinity,
+                        color: Theme.of(context).cardColor.withOpacity(0.5),
+                        child: Text(
+                          "$key (${groupDocs.length})",
+                          style: const TextStyle(
+                            color: Colors.tealAccent,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
+                      ...groupDocs.map(
+                        (doc) => _buildFileCard(context, doc, isAnon),
+                      ),
+                    ],
+                  );
+                }),
+
+                if (hasMore)
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     ),
-                    // Lista kafelków w grupie
-                    ...groupDocs.map(
-                      (doc) => _buildFileCard(context, doc, isAnon),
-                    ),
-                  ],
-                );
-              }).toList(),
+                  ),
+              ],
             );
           }
         },

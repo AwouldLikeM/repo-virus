@@ -172,12 +172,38 @@ def process_files(args):
             if args.dry_run:
                 continue
 
-        # Dynamic Metadata Logic (Restored)
+        # Dynamic Metadata
+        tags_pool = [
+            "potential_malware",
+            "needs_review",
+            "suspicious_origin",
+            "unknown_source",
+            "packed_executable",
+            "debug_build",
+            "old_binary",
+            "uncommon_file",
+            "heuristic_flagged",
+            "behavioral_anomaly",
+        ]
+        num_tags = random.randint(1, 3)
+        selected_tags = random.sample(tags_pool, num_tags)
+        tags = ["automated_upload"] + selected_tags
+
         risk_level = random.randint(1, 100)
-        tags = ["automated_upload"]
         if "Microsoft" in pe_meta["company_name"]:
             tags.append("spoofing_attempt")
             risk_level += 20
+
+        # randomly add another tag
+        if random.random() < 0.1:
+            tags.append("suspicious_behavior")
+            risk_level += 10
+
+        # append tag critical if risk above 100
+        if risk_level > 100:
+            tags.append("critical_threat")
+            risk_level = 100
+            
         status = "quarantined" if risk_level > 80 else "active"
 
         try:

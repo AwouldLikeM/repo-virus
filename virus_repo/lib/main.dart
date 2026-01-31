@@ -3,7 +3,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Importujemy nasze ekrany
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 
@@ -19,7 +18,7 @@ class VirusRepoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Infected Repo', // title should not be hardcoded
+      title: 'Infected Repo', // .arb files for localization can be added later
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,

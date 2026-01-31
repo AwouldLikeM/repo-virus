@@ -5,6 +5,24 @@
 To jest dokumentacja dla nas, żebyśmy ogarniali co tu się dzieje, jak to odpalić i co mówić prowadzącemu itp.
 
 ---
+Opcja 1: Dostępność w Repozytorium (Najlepsza)
+"To jest repozytorium plików.
+
+Active (Aktywny): Oznacza, że rekord jest aktywnym zasobem repozytorium, dostępnym do pobrania i dalszych badań. Plik został zweryfikowany jako 'bezpieczny' lub 'niskiego ryzyka', więc jest aktywowany dla użytkowników.
+
+Quarantined (Kwarantanna): Oznacza, że rekord jest zablokowany/zawieszony. Plik jest zbyt niebezpieczny, by był ogólnodostępny, więc jego status w systemie to 'wstrzymany' (czyli przeciwieństwo active)."
+
+Opcja 2: Logika Systemów Security (Threat Intelligence)
+"W systemach Threat Intelligence:
+
+Status Active oznacza, że próbka została aktywnie włączona do zbioru danych (Dataset) i jest uznana za przetworzoną.
+
+Gdybyśmy nazwali go Safe, sugerowalibyśmy, że dajemy 100% gwarancji bezpieczeństwa. W security unika się słowa 'Safe', bo żaden plik binarny nie jest w 100% pewny. Active jest bardziej neutralne technicznie – oznacza 'plik jest w obiegu'."
+-----
+
+Zastosowaliśmy model Incremental Stream Subscriptions. Zamiast paginacji statycznej, dynamicznie zwiększamy limit otwartego strumienia danych (window size). Dzięki temu zachowujemy pełną reaktywność (Real-Time Updates) dla załadowanych danych, jednocześnie nie pobierając całej bazy na starcie
+
+---
 
 ## 🚀 JAK TO ODPALIĆ (essa)
 
@@ -87,7 +105,7 @@ Te pliki są ignorowane przez `.gitignore` i każdy musi je mieć u siebie lokal
 Jeżeli tu dotarłeś to daj łapkę w górę, napisz komentarz oraz zasubskrybuj gemini Pro.
 
 Autorzy:
-- Adam Mikołajewski
-- Jakub Rutkowski
-- Aleksander Pawlak
-- Kinga Pabińczyk
+- Adam Mikołajewski 👶🏿
+- Jakub Rutkowski 🧔🏿
+- Aleksander Pawlak 🧙🏿‍♂️
+- Kinga Pabińczyk 💁🏿‍♀️

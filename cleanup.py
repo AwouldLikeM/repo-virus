@@ -1,86 +1,96 @@
 import argparse
 import os
 import shutil
-from firebase_admin import firestore, storage
+import firebase_admin
+from firebase_admin import credentials, firestore, storage
 from _logger import setup_logger
-from _utils import AppConfig, get_firebase_app, load_config
-
+from _utils import AppConfig, load_config, get_firebase_app # Pamiętaj o imporcie get_firebase_app z utils!
 
 config: AppConfig = load_config()
-
 logger = setup_logger(__name__)
-
 
 def clean_local():
     logger.info("Starting local cleanup...")
+    
+    paths_to_clean = [config.uploaded_archive, config.virus_samples_dir]
+    
+    for path in paths_to_clean:
+        if os.path.exists(path):
+            try:
+                shutil.rmtree(path)
+                logger.info(f"Deleted folder: {path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete {path}: {e}")
+        else:
+            logger.debug(f"Path not found (skipping): {path}")
 
-    if os.path.exists(config.uploaded_archive):
-        logger.debug(f"Deleting folder {config.uploaded_archive}...")
-        shutil.rmtree(config.uploaded_archive)
-        logger.info(f"Successfully deleted folder {config.uploaded_archive}")
-    else:
-        logger.warning(f"Local directory {config.uploaded_archive} does not exist, skipping.")
-
-    if os.path.exists(config.virus_samples_dir):
-        logger.debug(f"Deleting folder {config.virus_samples_dir}...")
-        shutil.rmtree(config.virus_samples_dir)
-        logger.info(f"Successfully deleted folder {config.virus_samples_dir}")
-    else:
-        logger.warning(f"Local directory {config.virus_samples_dir} does not exist, skipping.")
-
+def delete_firestore_collection_in_batches(db, collection_name, batch_size=400):
+    """Efficiently deletes documents using WriteBatch."""
+    coll_ref = db.collection(collection_name)
+    total_deleted = 0
+    
+    while True:
+        # Pobieramy tylko referencje (szybciej niż całe dokumenty)
+        docs = list(coll_ref.limit(batch_size).stream())
+        deleted_count = len(docs)
+        
+        if deleted_count == 0:
+            break
+            
+        batch = db.batch()
+        for doc in docs:
+            batch.delete(doc.reference)
+            
+        batch.commit()
+        total_deleted += deleted_count
+        logger.info(f"  ...committed batch delete of {deleted_count} documents.")
+        
+    logger.info(f"Total documents deleted from Firestore: {total_deleted}")
 
 def clean_cloud():
-    logger.info("Starting cloud cleanup (Storage + Firestore)...")
+    logger.info("Starting CLOUD cleanup...")
 
-    # Initialize Firebase app if not already initialized
+    # Używamy helpera z _utils (DRY!)
     get_firebase_app(config)
 
     db = firestore.client()
     bucket = storage.bucket()
 
-    # 1. Clean Firestore
-    docs = db.collection(config.firebase_collection).stream()
-    deleted_count = 0
-    for doc in docs:
-        doc.reference.delete()
-        deleted_count += 1
-    logger.info(f"Deleted {deleted_count} documents from Firestore.")
+    # 1. Clean Firestore (Batch)
+    logger.info("Cleaning Firestore...")
+    delete_firestore_collection_in_batches(db, config.firebase_collection)
 
-    # 2. Clean Storage
-    blobs = bucket.list_blobs(prefix="repo/")
-    deleted_blobs = 0
-    for blob in blobs:
-        blob.delete()
-        deleted_blobs += 1
-    logger.info(f"Deleted {deleted_blobs} files from Storage.")
-
+    # 2. Clean Storage (Batch)
+    logger.info("Cleaning Storage...")
+    blobs = list(bucket.list_blobs(prefix="repo/"))
+    
+    if blobs:
+        # bucket.delete_blobs usuwa listę w jednym żądaniu (znacznie szybciej)
+        # Uwaga: API Google czasem ma limit na ilość w jednym requeście, 
+        # ale biblioteka pythonowa zazwyczaj to obsługuje pod spodem.
+        # Dla bezpieczeństwa można to też dzielić na chunki, ale przy <10k plików zadziała.
+        chunks = [blobs[i:i + 100] for i in range(0, len(blobs), 100)]
+        total_blobs = 0
+        for chunk in chunks:
+            bucket.delete_blobs(chunk)
+            total_blobs += len(chunk)
+            logger.info(f"  ...deleted chunk of {len(chunk)} files from Storage.")
+    else:
+        logger.info("Storage is already empty.")
 
 if __name__ == "__main__":
-
-
-    parser = argparse.ArgumentParser(description="Clean local and cloud resources.")
-    parser.add_argument(
-        "--cloud",
-        action="store_true",
-        help="Also clean cloud resources (Storage + Firestore)",
-    )
-    parser.add_argument(
-        "--local",
-        action="store_true",
-        help="Also clean local resources (uploaded_archive and generated_samples folders)",
-    )
+    parser = argparse.ArgumentParser(description="Clean resources with BATCH operations.")
+    parser.add_argument("--cloud", action="store_true", help="Clean cloud resources")
+    parser.add_argument("--local", action="store_true", help="Clean local folders")
+    
     args = parser.parse_args()
-    if args.cloud:
-        clean_cloud()
-    else:
-        logger.info("Cloud cleanup skipped. Use --cloud flag to enable.")
 
-    if args.local:
-        clean_local()
-    else:
-        logger.info("Local cleanup skipped. Use --local flag to enable.")
-    # if neither flag is provided, clean both
+    # Domyślnie czyścimy wszystko, jeśli nie podano flag
     if not args.cloud and not args.local:
         clean_local()
         clean_cloud()
-    logger.info("Cleanup process completed.")
+    else:
+        if args.local: clean_local()
+        if args.cloud: clean_cloud()
+        
+    logger.info("Cleanup completed.")

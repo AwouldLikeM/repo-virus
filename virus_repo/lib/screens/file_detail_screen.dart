@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 
+/// Screen that displays detailed information about a specific infected file.
+/// It allows authorized users (Admins) to edit tags, update status, and manage analyst notes.
 class FileDetailScreen extends StatelessWidget {
   final String docId;
   final Map<String, dynamic> initialData;
@@ -15,6 +17,7 @@ class FileDetailScreen extends StatelessWidget {
     required this.isAnon,
   });
 
+  /// Opens the provided URL in an external application (browser).
   Future<void> _launchURL(String url) async {
     final uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -22,7 +25,9 @@ class FileDetailScreen extends StatelessWidget {
     }
   }
 
-  // --- ZAAWANSOWANA EDYCJA I USUWANIE TAGA ---
+  /// Handles advanced tag editing and deletion.
+  /// It opens a dialog that allows renaming a tag via a transaction (to ensure atomicity)
+  /// or deleting it directly.
   void _editOrDeleteTag(BuildContext context, String currentTag) {
     final TextEditingController tagController = TextEditingController(
       text: currentTag,
@@ -40,7 +45,7 @@ class FileDetailScreen extends StatelessWidget {
                 icon: const Icon(Icons.delete, color: Colors.redAccent),
                 tooltip: "Delete tag",
                 onPressed: () {
-                  // DELETE via arrayRemove (To jest operacja atomowa, więc bezpieczna bez transakcji)
+                  // DELETE via arrayRemove (This is an atomic operation, so it is safe without a transaction)
                   showDialog(
                     context: context,
                     builder: (confirmCtx) {
@@ -91,7 +96,7 @@ class FileDetailScreen extends StatelessWidget {
               child: const Text("Cancel"),
             ),
 
-            // --- PROFESJONALNA EDYCJA (TRANSAKCJA) ---
+            // --- PROFESSIONAL EDITING (TRANSACTION) ---
             ElevatedButton(
               onPressed: () async {
                 String newText = tagController.text.trim();
@@ -101,29 +106,29 @@ class FileDetailScreen extends StatelessWidget {
                       .doc(docId);
 
                   try {
-                    // Uruchamiamy transakcję
+                    // Run transaction to safely update the array
                     await FirebaseFirestore.instance.runTransaction((
                       transaction,
                     ) async {
-                      // 1. ODCZYT (Wewnątrz transakcji!)
+                      // 1. READ (Inside transaction!)
                       DocumentSnapshot snapshot = await transaction.get(docRef);
 
                       if (!snapshot.exists) {
                         throw Exception("Document does not exist!");
                       }
 
-                      // Wyciągamy aktualną listę tagów
+                      // Extract current tag list
                       List<dynamic> currentTags =
                           snapshot.get('dynamic_metadata.tags') ?? [];
                       List<String> tagsList = List<String>.from(currentTags);
 
-                      // 2. LOGIKA BIZNESOWA (Podmiana w pamięci)
+                      // 2. BUSINESS LOGIC (In-memory replacement)
                       int index = tagsList.indexOf(currentTag);
                       if (index != -1) {
-                        tagsList[index] = newText; // Podmień w miejscu
+                        tagsList[index] = newText; // Replace in place
 
-                        // 3. ZAPIS (Wewnątrz transakcji!)
-                        // Transakcja upewni się, że nikt w międzyczasie nie zmienił tej listy
+                        // 3. WRITE (Inside transaction!)
+                        // The transaction ensures no one else modified the list in the meantime
                         transaction.update(docRef, {
                           'dynamic_metadata.tags': tagsList,
                         });
@@ -132,7 +137,7 @@ class FileDetailScreen extends StatelessWidget {
 
                     if (context.mounted) Navigator.pop(ctx);
                   } catch (e) {
-                    // Obsługa błędu (np. dokument usunięty w trakcie edycji)
+                    // Error handling (e.g., document deleted during edit)
                     print("Transaction failed: $e");
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -152,6 +157,7 @@ class FileDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Updates the security status of the file in Firestore.
   void _updateStatus(BuildContext context, String newStatus) {
     FirebaseFirestore.instance.collection('infected_files').doc(docId).update({
       'status': newStatus,
@@ -159,6 +165,7 @@ class FileDetailScreen extends StatelessWidget {
     Navigator.pop(context);
   }
 
+  /// Opens a dialog to add a new custom tag to the file's metadata.
   void _addCustomTag(BuildContext context) {
     final TextEditingController tagController = TextEditingController();
     showDialog(
@@ -200,6 +207,7 @@ class FileDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Opens a confirmation dialog to delete a specific tag (Simplified version).
   void _deleteTag(BuildContext context, String tagToDelete) {
     showDialog(
       context: context,
@@ -233,6 +241,7 @@ class FileDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Opens a dialog to edit or add analyst notes to the file.
   void _editAnalystNotes(BuildContext context, String currentNotes) {
     final TextEditingController notesController = TextEditingController(
       text: currentNotes,
@@ -273,6 +282,7 @@ class FileDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Shows a dialog allowing the admin to choose a new status for the file.
   void _showEditStatusDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -304,6 +314,7 @@ class FileDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Builds the UI of the screen, including the StreamBuilder for real-time updates.
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
@@ -468,7 +479,6 @@ class FileDetailScreen extends StatelessWidget {
                   children: [
                     ...tags.map(
                       (tag) => GestureDetector(
-                        // Zmiana: Wywołujemy _editOrDeleteTag zamiast starego _deleteTag
                         onLongPress: isAnon
                             ? null
                             : () => _editOrDeleteTag(context, tag),
@@ -526,6 +536,7 @@ class FileDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Helper widget to build a single metadata row (Label + Value).
   Widget _buildMetaRow(String label, String? value) {
     if (value == null || value.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -533,7 +544,7 @@ class FileDetailScreen extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // POPRAWIONE: ZWIĘKSZONA SZEROKOŚĆ Z 100 NA 120
+          // FIXED: INCREASED WIDTH FROM 100 TO 120
           SizedBox(
             width: 120,
             child: Text(label, style: const TextStyle(color: Colors.grey)),
